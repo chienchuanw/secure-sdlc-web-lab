@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}首頁 - Secure SDLC Lab{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="jumbotron bg-light p-5 rounded">
+            <h1 class="display-4">歡迎來到 Secure SDLC Web Lab</h1>
+            <p class="lead">一個用於學習和實踐安全軟體開發生命週期的漏洞實驗環境</p>
+            <hr class="my-4">
+            <p>本專案刻意引入多種常見的 Web 應用程式安全漏洞，供學習和實踐防禦措施。</p>
+
+            {% if user.is_authenticated %}
+                <p class="alert alert-success">
+                    <strong>✅ 您已登入：</strong> {{ user.username }}
+                </p>
+            {% else %}
+                <p class="alert alert-warning">
+                    <strong>⚠️ 您尚未登入</strong>
+                </p>
+                <a class="btn btn-primary btn-lg me-2" href="{% url 'accounts:register' %}" role="button">立即註冊</a>
+                <a class="btn btn-success btn-lg" href="{% url 'accounts:login' %}" role="button">登入</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">⚠️ 目前已實作的漏洞</h5>
+            </div>
+            <div class="card-body">
+                <h6>使用者認證模組</h6>
+                <ul>
+                    <li><strong>使用者名稱/Email 列舉</strong> - 註冊時會明確告知帳號是否已存在</li>
+                    <li><strong>弱密碼驗證</strong> - 允許簡單密碼（如 123456）</li>
+                    <li><strong>Timing Attack</strong> - 登入時帳號存在/不存在的回應時間不同</li>
+                    <li><strong>資訊洩漏</strong> - 明確區分「帳號不存在」或「密碼錯誤」</li>
+                    <li><strong>無 Rate Limiting</strong> - 可無限次嘗試註冊/登入</li>
+                    <li><strong>CSRF on Logout</strong> - 登出使用 GET 方法</li>
+                    <li><strong>Open Redirect</strong> - 登入的 next 參數未驗證</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">📚 開發階段</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">✅ Phase 0：技術選型與安全邊界定義</li>
+                    <li class="list-group-item">✅ Phase 1：功能設計（攻擊面建模）</li>
+                    <li class="list-group-item">⏳ Phase 2：基礎功能開發（使用者認證）- 進行中</li>
+                    <li class="list-group-item">🔜 Phase 2：基礎功能開發（文章管理）</li>
+                    <li class="list-group-item">🔜 Phase 3：威脅建模與修復</li>
+                    <li class="list-group-item">🔜 Phase 4：自動化安全測試</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
