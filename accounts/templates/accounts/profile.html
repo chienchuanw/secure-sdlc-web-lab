@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}個人資料 - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">個人資料</h3>
+            </div>
+            <div class="card-body">
+                <h4>歡迎，{{ user.username }}</h4>
+
+                <!-- ✅ 安全的做法：Django 自動 escape -->
+                <p><strong>使用者名稱（安全）：</strong> {{ user.username }}</p>
+
+                <!-- 🔴 危險的做法：使用 |safe 關閉 escape -->
+                <p><strong>使用者名稱（不安全）：</strong> {{ user.username|safe }}</p>
+
+                <hr>
+
+                <p><strong>Email：</strong> {{ user.email }}</p>
+                <p><strong>註冊時間：</strong> {{ user.date_joined|date:"Y-m-d H:i" }}</p>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">⚠️ XSS 漏洞示範</h5>
+            </div>
+            <div class="card-body">
+                <p>這個頁面刻意引入了 XSS 漏洞來示範攻擊效果。</p>
+                <p>如果你的使用者名稱包含 <code>&lt;script&gt;</code> 標籤，在「使用者名稱（不安全）」那一行會被執行。</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -32,6 +32,9 @@
                             </span>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="{% url 'accounts:profile' %}">個人資料</a>
+                        </li>
+                        <li class="nav-item">
                             <!-- 🔴 漏洞：GET 方法的登出連結（CSRF） -->
                             <a class="nav-link btn btn-outline-danger btn-sm" href="{% url 'accounts:logout' %}">登出</a>
                         </li>

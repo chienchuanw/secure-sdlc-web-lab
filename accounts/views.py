@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import login, logout
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from .forms import RegisterForm, LoginForm
 
@@ -101,3 +102,14 @@ def logout_view(request):
     messages.success(request, f'{username}，您已成功登出')
 
     return redirect('home')
+
+
+@login_required
+def profile(request):
+    """
+    個人資料頁面
+
+    ⚠️ 安全問題（刻意引入）：
+    1. XSS 漏洞 - 模板中使用 |safe filter 導致 Stored XSS
+    """
+    return render(request, 'accounts/profile.html')

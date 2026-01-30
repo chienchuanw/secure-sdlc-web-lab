@@ -8,4 +8,5 @@ urlpatterns = [
     path('register/', views.register, name='register'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),  # 🔴 漏洞：GET 方法的登出（CSRF）
+    path('profile/', views.profile, name='profile'),  # 🔴 漏洞：XSS（使用 |safe）
 ]
