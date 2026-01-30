@@ -20,11 +20,11 @@ COPY pyproject.toml uv.lock ./
 RUN pip install uv && \
     uv sync --frozen
 
+# Activate virtual environment by updating PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Copy project files
 COPY . .
-
-# Collect static files
-RUN python manage.py collectstatic --noinput
 
 # Expose port
 EXPOSE 8000
