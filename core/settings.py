@@ -129,3 +129,9 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Email Settings
+# 使用 Console Backend 用於開發測試（Email 會顯示在終端機）
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'noreply@secure-sdlc-lab.local'
+EMAIL_SUBJECT_PREFIX = '[Secure SDLC Lab] '

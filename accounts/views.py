@@ -1,9 +1,12 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.models import User
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .forms import RegisterForm, LoginForm
+from django.core.mail import send_mail
+from django.urls import reverse
+from .forms import RegisterForm, LoginForm, PasswordResetRequestForm, PasswordResetForm
+from .models import PasswordResetToken
 
 
 def register(request):
@@ -113,3 +116,123 @@ def profile(request):
     1. XSS 漏洞 - 模板中使用 |safe filter 導致 Stored XSS
     """
     return render(request, 'accounts/profile.html')
+
+
+def password_reset_request(request):
+    """
+    密碼重設請求視圖
+
+    ⚠️ 安全問題（刻意引入）：
+    1. Email 列舉（透過表單驗證）
+    2. 無 Rate Limiting
+    3. Token 使用弱隨機數產生
+    """
+    if request.method == 'POST':
+        form = PasswordResetRequestForm(request.POST)
+
+        if form.is_valid():
+            email = form.cleaned_data['email']
+
+            # 取得使用者
+            user = User.objects.get(email=email)
+
+            # 🔴 漏洞：產生弱 Token（可預測）
+            token = PasswordResetToken.generate_weak_token()
+
+            # 建立 Token 記錄
+            reset_token = PasswordResetToken.objects.create(
+                user=user,
+                token=token
+            )
+
+            # 建立重設連結
+            reset_url = request.build_absolute_uri(
+                reverse('accounts:password_reset', args=[token])
+            )
+
+            # 發送 Email
+            subject = '密碼重設請求'
+            message = f'''
+您好 {user.username}，
+
+您請求重設密碼。請點擊以下連結來重設您的密碼：
+
+{reset_url}
+
+如果您沒有請求重設密碼，請忽略此信件。
+
+---
+Secure SDLC Lab
+            '''
+
+            send_mail(
+                subject,
+                message,
+                'noreply@secure-sdlc-lab.local',
+                [email],
+                fail_silently=False,
+            )
+
+            # 🔴 漏洞：成功訊息洩漏資訊
+            messages.success(request, f'密碼重設連結已發送至 {email}')
+            return redirect('accounts:login')
+        else:
+            # 🔴 漏洞：錯誤訊息洩漏資訊（Email 不存在）
+            messages.error(request, '請檢查您的 Email')
+    else:
+        form = PasswordResetRequestForm()
+
+    return render(request, 'accounts/password_reset_request.html', {'form': form})
+
+
+def password_reset(request, token):
+    """
+    密碼重設視圖（透過 token）
+
+    ⚠️ 安全問題（刻意引入）：
+    1. 沒有檢查 token 是否過期
+    2. 沒有檢查 token 是否已使用
+    3. Token 可以重複使用
+    """
+    # 驗證 token
+    try:
+        reset_token = PasswordResetToken.objects.get(token=token)
+    except PasswordResetToken.DoesNotExist:
+        messages.error(request, '無效的重設連結')
+        return redirect('accounts:login')
+
+    # 🔴 漏洞：沒有檢查 token 是否過期
+    # if reset_token.is_expired():
+    #     messages.error(request, '重設連結已過期')
+    #     return redirect('accounts:password_reset_request')
+
+    # 🔴 漏洞：沒有檢查 token 是否已使用
+    # if reset_token.is_used:
+    #     messages.error(request, '此重設連結已被使用')
+    #     return redirect('accounts:password_reset_request')
+
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+
+        if form.is_valid():
+            new_password = form.cleaned_data['new_password']
+
+            # 更新密碼
+            user = reset_token.user
+            user.set_password(new_password)
+            user.save()
+
+            # 🔴 漏洞：沒有標記 token 為已使用
+            # reset_token.mark_as_used()
+
+            messages.success(request, '密碼已成功重設，請使用新密碼登入')
+            return redirect('accounts:login')
+    else:
+        form = PasswordResetForm()
+
+    context = {
+        'form': form,
+        'token': token,
+        'username': reset_token.user.username
+    }
+    return render(request, 'accounts/password_reset.html', context)

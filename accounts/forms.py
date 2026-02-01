@@ -4,6 +4,84 @@ from django.contrib.auth import authenticate
 import time
 
 
+class PasswordResetRequestForm(forms.Form):
+    """
+    密碼重設請求表單
+
+    ⚠️ 安全問題（刻意引入）：
+    1. Email 列舉 - 明確告知 Email 是否存在
+    2. 無 Rate Limiting - 可以無限次請求
+    """
+    email = forms.EmailField(
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Email'
+        })
+    )
+
+    def clean_email(self):
+        """
+        驗證 Email
+
+        ⚠️ 漏洞：Email 列舉
+        - 明確告知 Email 是否存在於系統中
+        - 正確做法：無論 Email 是否存在，都顯示相同訊息
+        """
+        email = self.cleaned_data.get('email')
+
+        # 🔴 漏洞：明確告知 Email 是否存在
+        if not User.objects.filter(email=email).exists():
+            raise forms.ValidationError('此 Email 不存在於系統中')
+
+        return email
+
+
+class PasswordResetForm(forms.Form):
+    """
+    密碼重設表單（透過 token）
+
+    ⚠️ 安全問題（刻意引入）：
+    1. 沒有檢查 token 是否過期
+    2. 沒有檢查 token 是否已使用
+    3. 弱密碼驗證（與註冊相同的問題）
+    """
+    new_password = forms.CharField(
+        required=True,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': '新密碼'
+        })
+    )
+
+    new_password_confirm = forms.CharField(
+        required=True,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': '確認新密碼'
+        })
+    )
+
+    def clean(self):
+        """
+        驗證密碼
+
+        ⚠️ 漏洞：沒有檢查密碼強度（與註冊相同的問題）
+        """
+        cleaned_data = super().clean()
+        password = cleaned_data.get('new_password')
+        password_confirm = cleaned_data.get('new_password_confirm')
+
+        if password and password_confirm:
+            if password != password_confirm:
+                raise forms.ValidationError('兩次輸入的密碼不一致')
+
+        # 🔴 漏洞：沒有檢查密碼強度
+        # 允許使用 "123456" 等弱密碼
+
+        return cleaned_data
+
+
 class LoginForm(forms.Form):
     """
     使用者登入表單
